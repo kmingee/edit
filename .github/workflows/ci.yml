@@ -54,11 +54,12 @@ jobs:
 
       - name: Run clippy
         run: cargo clippy --all-features --all-targets -- --no-deps --deny warnings
-
-  release-macos-x86_64:
-    name: Build macOS x86_64 release binary
+      
+  release-macos-x86_64-pkg:
+    name: Build macOS x86_64 .pkg installer
     runs-on: macos-15-intel
     needs: check
+    if: startsWith(github.ref, 'refs/tags/v')
 
     steps:
       - name: Checkout
@@ -75,26 +76,37 @@ jobs:
           key: macos-x86_64-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Install Rust
-        run: rustup toolchain install nightly --no-self-update --profile minimal
+        run: rustup toolchain install nightly --no-self-update --profile minimal --component rust-src
 
       - name: Build release binary
         run: cargo +nightly build --release --config .cargo/release.toml
 
-      - name: Package binary
+      - name: Build macOS x86_64 pkg installer
         shell: bash
         run: |
+          set -euxo pipefail
+
+          VERSION="${GITHUB_REF_NAME#v}"
+          PKG_NAME="edit-${GITHUB_REF_NAME}-macos-x86_64.pkg"
+
+          mkdir -p pkgroot/usr/local/bin
+          cp target/release/edit pkgroot/usr/local/bin/edit
+          chmod 755 pkgroot/usr/local/bin/edit
+
           mkdir -p dist
-          cp target/release/edit dist/edit
 
-          cd dist
-          chmod +x edit
-          tar -czf edit-${{ github.ref_name }}-macos-x86_64.tar.gz edit
+          pkgbuild \
+            --root pkgroot \
+            --identifier com.microsoft.edit \
+            --version "$VERSION" \
+            --install-location / \
+            "dist/$PKG_NAME"
 
-          shasum -a 256 edit-${{ github.ref_name }}-macos-x86_64.tar.gz > edit-${{ github.ref_name }}-macos-x86_64.tar.gz.sha256
+          shasum -a 256 "dist/$PKG_NAME" > "dist/$PKG_NAME.sha256"
 
-      - name: Upload to GitHub Release
+      - name: Upload pkg to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/edit-${{ github.ref_name }}-macos-x86_64.tar.gz
-            dist/edit-${{ github.ref_name }}-macos-x86_64.tar.gz.sha256
+            dist/edit-${{ github.ref_name }}-macos-x86_64.pkg
+            dist/edit-${{ github.ref_name }}-macos-x86_64.pkg.sha256
