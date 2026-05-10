@@ -1,0 +1,67 @@
+name: Build macOS x86_64
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-macos-x86_64:
+    name: Build macOS x86_64 .pkg
+    runs-on: macos-15-intel
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: macos-x86_64-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install Rust nightly
+        run: rustup toolchain install nightly --no-self-update --profile minimal --component rust-src
+
+      - name: Build release binary
+        run: cargo +nightly build --release --config .cargo/release.toml
+
+      - name: Build macOS x86_64 pkg installer
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          VERSION="$(date +%Y%m%d-%H%M%S)"
+          PKG_NAME="edit-macos-x86_64-${VERSION}.pkg"
+
+          mkdir -p pkgroot/usr/local/bin
+          cp target/release/edit pkgroot/usr/local/bin/edit
+          chmod 755 pkgroot/usr/local/bin/edit
+
+          mkdir -p dist
+
+          pkgbuild \
+            --root pkgroot \
+            --identifier com.microsoft.edit \
+            --version "$VERSION" \
+            --install-location / \
+            "dist/$PKG_NAME"
+
+          shasum -a 256 "dist/$PKG_NAME" > "dist/$PKG_NAME.sha256"
+
+      - name: Upload pkg artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: edit-macos-x86_64-pkg
+          path: |
+            dist/*.pkg
+            dist/*.sha256
+          if-no-files-found: error
