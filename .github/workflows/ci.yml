@@ -59,7 +59,7 @@ jobs:
     name: Build macOS x86_64 .pkg installer
     runs-on: macos-15-intel
     needs: check
-    if: startsWith(github.ref, 'refs/tags/v')
+    
 
     steps:
       - name: Checkout
